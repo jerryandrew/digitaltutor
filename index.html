@@ -1,0 +1,193 @@
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>급식 정보</title>
+    <style>
+        /* CSS 스타일 */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f4f7f6;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            text-align: center;
+            width: 90%;
+            max-width: 500px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        input[type="date"] {
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+            width: calc(100% - 22px);
+            margin-bottom: 20px;
+            font-size: 16px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #meal-info {
+            margin-top: 25px;
+            text-align: left;
+            border-top: 1px solid #eee;
+            padding-top: 20px;
+        }
+        .meal-type {
+            margin-bottom: 15px;
+        }
+        .meal-type h2 {
+            font-size: 18px;
+            color: #007bff;
+            margin-bottom: 8px;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 5px;
+        }
+        .meal-content {
+            font-size: 16px;
+            color: #555;
+            line-height: 1.6;
+        }
+        .no-data {
+            color: #888;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>급식 정보 조회</h1>
+        <input type="date" id="date-picker">
+        <button onclick="getMealInfo()">급식 정보 가져오기</button>
+        <div id="meal-info">
+            <p class="no-data">날짜를 선택하고 버튼을 눌러주세요.</p>
+        </div>
+    </div>
+
+    <script>
+        // Javascript 코드
+        // 페이지 로드 시 오늘 날짜로 기본 설정
+        document.addEventListener('DOMContentLoaded', function() {
+            const today = new Date();
+            const yyyy = today.getFullYear();
+            const mm = String(today.getMonth() + 1).padStart(2, '0');
+            const dd = String(today.getDate()).padStart(2, '0');
+            document.getElementById('date-picker').value = `${yyyy}-${mm}-${dd}`;
+        });
+
+        async function getMealInfo() {
+            const datePicker = document.getElementById('date-picker');
+            const selectedDate = datePicker.value;
+            const mealInfoDiv = document.getElementById('meal-info');
+
+            // 날짜가 선택되지 않았으면 함수 종료
+            if (!selectedDate) {
+                mealInfoDiv.innerHTML = '<p class="no-data">날짜를 선택해주세요.</p>';
+                return;
+            }
+
+            // 날짜를 YYYYMMDD 형식으로 변환
+            const ymd = selectedDate.replace(/-/g, '');
+            const yearMonth = ymd.substring(0, 6);
+
+            // API URL 생성 (ATPT_OFCDC_SC_CODE와 SD_SCHUL_CODE는 예시 값입니다)
+            const ATPT_OFCDC_SC_CODE = 'J10'; // 전라남도교육청
+            const SD_SCHUL_CODE = '7751102'; // 예시 학교 코드
+            const API_KEY = 'KEY'; // 나이스 교육정보 개방 포털에서 발급받은 KEY 입력
+            const apiURL = `https://open.neis.go.kr/hub/mealServiceDietInfo?KEY=${API_KEY}&Type=xml&ATPT_OFCDC_SC_CODE=${ATPT_OFCDC_SC_CODE}&SD_SCHUL_CODE=${SD_SCHUL_CODE}&MLSV_YMD=${ymd}`;
+
+            mealInfoDiv.innerHTML = '<p class="no-data">급식 정보를 불러오는 중입니다...</p>';
+
+            try {
+                // Fetch API를 사용하여 데이터 요청
+                const response = await fetch(apiURL);
+                const xmlString = await response.text();
+
+                // XML 파서 생성
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(xmlString, "text/xml");
+
+                const resultNode = xmlDoc.querySelector('RESULT');
+                if (resultNode) {
+                    const code = resultNode.querySelector('CODE').textContent;
+                    if (code === 'INFO-200') {
+                        mealInfoDiv.innerHTML = '<p class="no-data">해당 날짜의 급식 정보가 없습니다.</p>';
+                        return;
+                    } else if (code !== 'INFO-000') {
+                        const message = resultNode.querySelector('MESSAGE').textContent;
+                        mealInfoDiv.innerHTML = `<p class="no-data">API 오류: ${message}</p>`;
+                        return;
+                    }
+                }
+                
+                // 급식 정보 파싱
+                const rows = xmlDoc.getElementsByTagName('row');
+                let mealData = { '조식': '정보 없음', '중식': '정보 없음', '석식': '정보 없음' };
+                let mealFound = false;
+
+                for (let i = 0; i < rows.length; i++) {
+                    const row = rows[i];
+                    const mealDate = row.querySelector('MLSV_YMD').textContent;
+
+                    if (mealDate === ymd) {
+                        const mealType = row.querySelector('MMEAL_SC_NM').textContent;
+                        const mealContent = row.querySelector('DDISH_NM').textContent.replace(/<br\s*\/?>/gi, '\n');
+                        
+                        if (mealType === '조식') mealData['조식'] = mealContent;
+                        if (mealType === '중식') mealData['중식'] = mealContent;
+                        if (mealType === '석식') mealData['석식'] = mealContent;
+                        mealFound = true;
+                    }
+                }
+
+                // 파싱한 정보를 HTML로 표시
+                if (mealFound) {
+                    mealInfoDiv.innerHTML = `
+                        <div class="meal-type">
+                            <h2>아침</h2>
+                            <div class="meal-content">${mealData['조식'].replace(/\n/g, '<br>')}</div>
+                        </div>
+                        <div class="meal-type">
+                            <h2>점심</h2>
+                            <div class="meal-content">${mealData['중식'].replace(/\n/g, '<br>')}</div>
+                        </div>
+                        <div class="meal-type">
+                            <h2>저녁</h2>
+                            <div class="meal-content">${mealData['석식'].replace(/\n/g, '<br>')}</div>
+                        </div>
+                    `;
+                } else {
+                    mealInfoDiv.innerHTML = '<p class="no-data">해당 날짜의 급식 정보가 없습니다.</p>';
+                }
+
+            } catch (error) {
+                console.error('급식 정보를 가져오는 중 오류 발생:', error);
+                mealInfoDiv.innerHTML = '<p class="no-data">정보를 불러오는 데 실패했습니다. 잠시 후 다시 시도해주세요.</p>';
+            }
+        }
+    </script>
+
+</body>
+</html>
